@@ -15,6 +15,31 @@
 apiKey = process.env.HUBOT_UPTIMEROBOT_APIKEY
 alertContactId = process.env.HUBOT_UPTIMEROBOT_CONTACT_ID
 
+timeSince = (startDatetime, endDatetime = new Date()) ->
+  seconds = Math.floor((endDatetime - startDatetime) / 1000)
+
+  interval = Math.floor(seconds / 31536000)
+  if interval > 1
+    return "#{interval} years"
+
+  interval = Math.floor(seconds / 2592000)
+  if interval > 1
+    return "#{interval} months"
+
+  interval = Math.floor(seconds / 86400)
+  if interval > 1
+    return "#{interval} days"
+
+  interval = Math.floor(seconds / 3600)
+  if interval > 1
+    return "#{interval} hours"
+
+  interval = Math.floor(seconds / 60)
+  if interval > 1
+    return "#{interval} minutes"
+
+  return "#{Math.floor(seconds)} seconds"
+
 module.exports = (robot) ->
 
   REGEX = ///
@@ -29,7 +54,8 @@ module.exports = (robot) ->
     client = new Client apiKey
 
     filter = msg.match[2]
-    data = {}
+    data =
+      logs: true
 
     client.getMonitors data, (err, res) ->
       if err
@@ -54,7 +80,14 @@ module.exports = (robot) ->
           when "8" then "seems down"
           when "9" then "down"
 
-        msg.send "#{status.toUpperCase()} <- #{url} (#{uptime}% uptime)"
+        downtime = switch status
+          when "down", "seems down"
+            # If down, most recent log will be for when it went down.
+            timeSince(Date.parse monitor.log[0].datetime)
+          else
+            "N/A"
+
+        msg.send "#{status.toUpperCase()} <- #{url} (#{uptime}% uptime, down: #{downtime})"
 
   robot.respond /uptime add-check (\S+)( as (.*))?$/i, (msg) ->
     url = require('url').parse(msg.match[1])
@@ -62,7 +95,7 @@ module.exports = (robot) ->
 
     # Check that url format is correct.
     monitorUrl = url.href if url.protocol
-    
+
     # Create monitor
     msg.http("http://api.uptimerobot.com/newMonitor")
       .query({
